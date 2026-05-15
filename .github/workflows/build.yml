@@ -1,0 +1,50 @@
+name: 📦 Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  publish_module:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔐 Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Build and Push Docker Image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/lerianstudio/${{ github.repository }}:latest
+            ghcr.io/lerianstudio/${{ github.repository }}:${{ github.ref_name }}
+
+      - name: 🧰 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: 📦 Populate Go module in Athens proxy
+        env:
+          GOPROXY: https://athens.lerian.net
+        run: |
+          echo "📦 Caching Go module in Athens..."
+          go list -m github.com/${{ github.repository }}@${GITHUB_REF_NAME}
+          echo "✅ Done."
