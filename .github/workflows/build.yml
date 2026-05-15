@@ -1,0 +1,66 @@
+name: 📦 Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  publish_module:
+    runs-on: firmino-gh-actions-runners
+
+    env:
+      GOPROXY: https://athens.lerian.net,direct
+      GONOSUMDB: github.com/LerianStudio/*
+      GO111MODULE: on
+      VERSION: ${{ github.ref_name }}
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.4'
+          cache: false
+
+      - name: 🔐 Setup Git credentials for private repo access
+        run: |
+          cat <<EOF > ~/.netrc
+          machine github.com
+          login lerian-studio
+          password ${{ secrets.ATHENS_ACCESS_TOKEN }}
+          EOF
+          chmod 600 ~/.netrc
+
+      - name: 🔐 Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐳 Build and Push Docker Image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/lerianstudio/${{ github.repository }}:latest
+            ghcr.io/lerianstudio/${{ github.repository }}:${{ github.ref_name }}
+
+      - name: 📦 Populate Go module in Athens proxy
+        run: |
+          echo "📦 Caching Go module in Athens..."
+          go mod tidy
+          go list -m github.com/${{ github.repository }}@${VERSION} || {
+            echo "❌ Failed to cache the module in Athens."
+            exit 1
+          }
